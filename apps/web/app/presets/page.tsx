@@ -12,110 +12,31 @@ interface Preset {
 
 const presets: Preset[] = [
   {
-    name: 'Clean Minimal',
-    description: 'Simple and clean design with subtle shadows',
-    thumbnail: '🎯',
+    name: 'Light',
+    description: 'Clean light theme for bright websites',
+    thumbnail: '☀️',
     config: {
       theme: 'light',
       borderRadius: 12,
-      borderWidth: 0,
+      borderWidth: 1,
+      borderColor: '#e5e7eb',
       shadowSize: 'md',
       backgroundColor: '#ffffff',
-      showTitle: false,
-      showPrint: false,
+      textColor: '#111827',
     },
   },
   {
-    name: 'Dark Mode',
+    name: 'Dark',
     description: 'Modern dark theme for dark websites',
     thumbnail: '🌙',
     config: {
       theme: 'dark',
-      borderRadius: 16,
+      borderRadius: 12,
       borderWidth: 1,
       borderColor: '#374151',
-      shadowSize: 'lg',
+      shadowSize: 'md',
       backgroundColor: '#1f2937',
       textColor: '#f3f4f6',
-    },
-  },
-  {
-    name: 'Rounded Card',
-    description: 'Friendly rounded corners with soft shadow',
-    thumbnail: '📦',
-    config: {
-      borderRadius: 24,
-      borderWidth: 1,
-      borderColor: '#e5e7eb',
-      shadowSize: 'xl',
-      backgroundColor: '#ffffff',
-    },
-  },
-  {
-    name: 'Corporate Blue',
-    description: 'Professional look with blue accent',
-    thumbnail: '💼',
-    config: {
-      accentColor: '#1e40af',
-      borderRadius: 8,
-      borderWidth: 2,
-      borderColor: '#1e40af',
-      shadowSize: 'sm',
-      backgroundColor: '#f0f9ff',
-    },
-  },
-  {
-    name: 'Squarespace Ready',
-    description: 'Optimized for Squarespace containers',
-    thumbnail: '🔲',
-    config: {
-      squarespaceMode: true,
-      responsive: true,
-      borderRadius: 0,
-      borderWidth: 0,
-      shadowSize: 'none',
-      containerPadding: 20,
-    },
-  },
-  {
-    name: 'Agenda Focus',
-    description: 'Agenda view for upcoming events',
-    thumbnail: '📋',
-    config: {
-      viewMode: 'agenda',
-      showTitle: true,
-      showNavigation: true,
-      showDate: true,
-      showTabs: false,
-      showCalendars: false,
-      borderRadius: 12,
-      shadowSize: 'md',
-    },
-  },
-  {
-    name: 'Week Planner',
-    description: 'Weekly view for detailed planning',
-    thumbnail: '📅',
-    config: {
-      viewMode: 'week',
-      showTitle: true,
-      showNavigation: true,
-      showDate: true,
-      showTabs: true,
-      height: '700px',
-      borderRadius: 8,
-    },
-  },
-  {
-    name: 'Glassmorphism',
-    description: 'Modern glass effect style',
-    thumbnail: '✨',
-    config: {
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: 'rgba(255,255,255,0.2)',
-      shadowSize: 'xl',
-      backgroundColor: 'rgba(255,255,255,0.9)',
     },
   },
 ];
@@ -159,7 +80,7 @@ export default function PresetsPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
           {presets.map((preset) => {
             const presetConfig = { ...defaultConfig, ...preset.config };
             const queryString = configToQueryString(presetConfig);
@@ -249,7 +170,7 @@ export default function PresetsPage() {
       <footer className="border-t border-slate-200 dark:border-slate-700 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center text-sm text-slate-500 dark:text-slate-400">
-            <p>Simply Calendar Embeds - No account required.</p>
+            <p>Simply Calendar Embeds - Works with any public Google Calendar</p>
           </div>
         </div>
       </footer>

@@ -7,6 +7,8 @@ export interface CalendarConfig {
   showTitle: boolean;
   showNavigation: boolean;
   showDate: boolean;
+  showTodayButton: boolean;
+  showPastEvents: boolean;
   showPrint: boolean;
   showTabs: boolean;
   showCalendars: boolean;
@@ -15,7 +17,9 @@ export interface CalendarConfig {
   // Styling
   theme: 'light' | 'dark' | 'auto';
   accentColor: string;
-  backgroundColor: string;
+  eventColor: string;  eventOpacity: number;          // Event background opacity (0-100)
+  eventBorderColor: string;      // Event border color
+  eventBorderOpacity: number;    // Event border opacity (0-100)  backgroundColor: string;
   textColor: string;
   borderRadius: number;
   borderWidth: number;
@@ -43,6 +47,8 @@ export const defaultConfig: CalendarConfig = {
   showTitle: true,
   showNavigation: true,
   showDate: true,
+  showTodayButton: false,
+  showPastEvents: true,
   showPrint: false,
   showTabs: true,
   showCalendars: true,
@@ -50,6 +56,10 @@ export const defaultConfig: CalendarConfig = {
   
   theme: 'light',
   accentColor: '#4285f4',
+  eventColor: '#4285f4',
+  eventOpacity: 30,
+  eventBorderColor: '#4285f4',
+  eventBorderOpacity: 100,
   backgroundColor: '#ffffff',
   textColor: '#333333',
   borderRadius: 12,
@@ -71,6 +81,13 @@ export const defaultConfig: CalendarConfig = {
 
 export function extractCalendarId(url: string): string | null {
   // Handle various Google Calendar URL formats
+  
+  // If it's already an email/calendar ID format
+  if (url.includes('@') && !url.includes('http')) {
+    return url.trim();
+  }
+
+  // Try to extract from embed URL
   const patterns = [
     /src=([^&]+)/,
     /calendar\/embed\?.*src=([^&]+)/,
@@ -84,41 +101,14 @@ export function extractCalendarId(url: string): string | null {
       return decodeURIComponent(match[1]);
     }
   }
-  
-  // Check if it's already a calendar ID (email format)
-  if (url.includes('@') && !url.includes('http')) {
-    return url;
+
+  // Try to extract from ical URL
+  const icalMatch = url.match(/calendar\/ical\/([^/]+)/);
+  if (icalMatch) {
+    return decodeURIComponent(icalMatch[1]);
   }
   
   return null;
-}
-
-export function generateEmbedUrl(config: CalendarConfig): string {
-  const calendarId = extractCalendarId(config.calendarUrl);
-  if (!calendarId) return '';
-  
-  const params = new URLSearchParams();
-  params.set('src', calendarId);
-  params.set('ctz', Intl.DateTimeFormat().resolvedOptions().timeZone);
-  
-  // View mode
-  const modeMap = { month: 'MONTH', week: 'WEEK', agenda: 'AGENDA' };
-  params.set('mode', modeMap[config.viewMode] || 'MONTH');
-  
-  // Show/hide options
-  params.set('showTitle', config.showTitle ? '1' : '0');
-  params.set('showNav', config.showNavigation ? '1' : '0');
-  params.set('showDate', config.showDate ? '1' : '0');
-  params.set('showPrint', config.showPrint ? '1' : '0');
-  params.set('showTabs', config.showTabs ? '1' : '0');
-  params.set('showCalendars', config.showCalendars ? '1' : '0');
-  params.set('showTz', config.showTimezone ? '1' : '0');
-  
-  // Colors (Google uses hex without #)
-  const bgColor = config.backgroundColor.replace('#', '');
-  params.set('bgcolor', bgColor);
-  
-  return `https://calendar.google.com/calendar/embed?${params.toString()}`;
 }
 
 export function configToQueryString(config: CalendarConfig): string {
@@ -130,14 +120,14 @@ export function configToQueryString(config: CalendarConfig): string {
 export function queryStringToConfig(query: URLSearchParams): Partial<CalendarConfig> {
   const config: Partial<CalendarConfig> = {};
   
-  const stringFields = ['calendarUrl', 'viewMode', 'theme', 'accentColor', 'backgroundColor', 
+  const stringFields = ['calendarUrl', 'viewMode', 'theme', 'accentColor', 'eventColor', 'eventBorderColor', 'backgroundColor', 
     'textColor', 'borderColor', 'shadowSize', 'fontFamily', 'width', 'height', 
     'minHeight', 'maxHeight', 'aspectRatio'];
   
-  const booleanFields = ['showTitle', 'showNavigation', 'showDate', 'showPrint', 
+  const booleanFields = ['showTitle', 'showNavigation', 'showDate', 'showTodayButton', 'showPastEvents', 'showPrint', 
     'showTabs', 'showCalendars', 'showTimezone', 'responsive', 'squarespaceMode'];
   
-  const numberFields = ['borderRadius', 'borderWidth', 'containerPadding'];
+  const numberFields = ['borderRadius', 'borderWidth', 'containerPadding', 'eventOpacity', 'eventBorderOpacity'];
   
   stringFields.forEach(field => {
     const value = query.get(field);

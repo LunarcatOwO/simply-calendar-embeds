@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
-import { CalendarConfig, defaultConfig, generateEmbedUrl, extractCalendarId, configToQueryString, queryStringToConfig } from './types';
+import { CalendarConfig, defaultConfig, extractCalendarId, configToQueryString, queryStringToConfig } from './types';
+import CustomCalendar from './components/CustomCalendar';
+import { CalendarEvent } from './api/calendar/route';
 
 function HomeContent() {
   const searchParams = useSearchParams();
@@ -11,7 +13,12 @@ function HomeContent() {
   const [embedCode, setEmbedCode] = useState('');
   const [copied, setCopied] = useState(false);
   const [activeTab, setActiveTab] = useState<'basic' | 'styling' | 'advanced'>('basic');
-  const [previewKey, setPreviewKey] = useState(0);
+  
+  // Calendar data state
+  const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [calendarName, setCalendarName] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const updateConfig = useCallback((updates: Partial<CalendarConfig>) => {
     setConfig(prev => ({ ...prev, ...updates }));
@@ -25,17 +32,67 @@ function HomeContent() {
     }
   }, [searchParams]);
 
+  // Fetch calendar data when URL changes
+  const fetchCalendarData = useCallback(async (calendarUrl: string) => {
+    const calendarId = extractCalendarId(calendarUrl);
+    if (!calendarId) {
+      setError('Invalid calendar URL or ID');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Set time range based on showPastEvents
+      const timeMin = config.showPastEvents 
+        ? new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString() // 1 year ago
+        : new Date().toISOString(); // Now
+      
+      const response = await fetch(`/api/calendar?calendarId=${encodeURIComponent(calendarId)}&timeMin=${encodeURIComponent(timeMin)}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch calendar');
+      }
+
+      setEvents(data.events || []);
+      setCalendarName(data.summary || 'Calendar');
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load calendar');
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [config.showPastEvents]);
+
+  // Auto-fetch when calendar URL changes
   useEffect(() => {
     if (config.calendarUrl) {
+      const timeoutId = setTimeout(() => {
+        fetchCalendarData(config.calendarUrl);
+      }, 500); // Debounce
+      return () => clearTimeout(timeoutId);
+    } else {
+      setEvents([]);
+      setCalendarName('');
+      setError(null);
+    }
+  }, [config.calendarUrl, config.showPastEvents, fetchCalendarData]);
+
+  // Generate embed code
+  useEffect(() => {
+    if (config.calendarUrl && extractCalendarId(config.calendarUrl)) {
       const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
       const queryString = configToQueryString(config);
       const embedUrl = `${baseUrl}/embed?${queryString}`;
       
       const code = `<iframe 
   src="${embedUrl}"
-  style="border: none; width: 100%; height: ${config.height}; min-height: ${config.minHeight};"
+  style="border: none; width: ${config.width}; height: ${config.height}; min-height: ${config.minHeight};"
   loading="lazy"
-  title="Google Calendar"
+  title="Calendar"
 ></iframe>`;
       
       setEmbedCode(code);
@@ -48,16 +105,12 @@ function HomeContent() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const refreshPreview = () => {
-    setPreviewKey(prev => prev + 1);
-  };
-
   const isValidCalendar = extractCalendarId(config.calendarUrl) !== null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800">
+    <div className="min-h-screen bg-[#0a0a0a]">
       {/* Header */}
-      <header className="border-b border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm sticky top-0 z-50">
+      <header className="border-b border-zinc-800 bg-[#0a0a0a]/90 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -67,20 +120,17 @@ function HomeContent() {
                 </svg>
               </div>
               <div>
-                <h1 className="text-xl font-bold text-slate-900 dark:text-white">Simply Calendar Embeds</h1>
-                <p className="text-sm text-slate-500 dark:text-slate-400">Beautiful Google Calendar widgets</p>
+                <h1 className="text-xl font-bold text-white">Simply Calendar Embeds</h1>
+                <p className="text-sm text-zinc-400">Beautiful Google Calendar widgets</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <Link 
                 href="/presets"
-                className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="px-4 py-2 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
               >
                 Presets
               </Link>
-              <span className="px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-                No Account Required
-              </span>
             </div>
           </div>
         </div>
@@ -89,20 +139,20 @@ function HomeContent() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Hero Section */}
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-slate-900 dark:text-white mb-4">
-            Transform Your Google Calendar Embed
+          <h2 className="text-4xl font-bold text-white mb-4">
+            Transform Your Google Calendar
           </h2>
-          <p className="text-lg text-slate-600 dark:text-slate-300 max-w-2xl mx-auto">
-            Paste your Google Calendar embed URL and customize it with beautiful styling. 
-            Perfect for Squarespace, WordPress, and any website. Auto-resizes to fit any container.
+          <p className="text-lg text-zinc-400 max-w-2xl mx-auto">
+            Paste your public Google Calendar URL and get a fully customizable, beautifully rendered calendar.
+            Perfect for Squarespace, WordPress, and any website.
           </p>
         </div>
 
         {/* Main URL Input */}
         <div className="mb-8">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-6 border border-slate-200 dark:border-slate-700">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-              Google Calendar Embed URL or Calendar ID
+          <div className="bg-zinc-900 rounded-2xl shadow-lg p-6 border border-zinc-800">
+            <label className="block text-sm font-medium text-zinc-300 mb-2">
+              Google Calendar URL or Calendar ID
             </label>
             <div className="flex gap-4">
               <input
@@ -110,40 +160,47 @@ function HomeContent() {
                 value={config.calendarUrl}
                 onChange={(e) => updateConfig({ calendarUrl: e.target.value })}
                 placeholder="Paste your Google Calendar embed URL or calendar ID here..."
-                className="flex-1 px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="flex-1 px-4 py-3 rounded-xl border border-zinc-700 bg-zinc-800 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
               <button
-                onClick={refreshPreview}
-                disabled={!isValidCalendar}
-                className="px-6 py-3 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                onClick={() => fetchCalendarData(config.calendarUrl)}
+                disabled={!isValidCalendar || loading}
+                className="px-6 py-3 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
-                Generate
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Load Calendar'
+                )}
               </button>
             </div>
             {config.calendarUrl && !isValidCalendar && (
-              <p className="mt-2 text-sm text-red-500">
+              <p className="mt-2 text-sm text-red-400">
                 Please enter a valid Google Calendar embed URL or calendar ID
               </p>
             )}
-            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-              Find your embed URL in Google Calendar → Settings → Calendar settings → Integrate calendar → Embed code
+            <p className="mt-2 text-xs text-zinc-500">
+              Your calendar must be set to public. Find it in Google Calendar → Settings → Make available to public
             </p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Customization Panel */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="bg-zinc-900 rounded-2xl shadow-lg border border-zinc-800">
             {/* Tabs */}
-            <div className="flex border-b border-slate-200 dark:border-slate-700">
+            <div className="flex border-b border-zinc-800">
               {(['basic', 'styling', 'advanced'] as const).map((tab) => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
                   className={`flex-1 px-4 py-3 text-sm font-medium transition-colors ${
                     activeTab === tab
-                      ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50 dark:bg-blue-900/20'
-                      : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                      ? 'text-blue-400 border-b-2 border-blue-500 bg-blue-500/10'
+                      : 'text-zinc-400 hover:text-zinc-200'
                   }`}
                 >
                   {tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -151,13 +208,13 @@ function HomeContent() {
               ))}
             </div>
 
-            <div className="p-6 space-y-6 max-h-[600px] overflow-y-auto">
+            <div className="p-6 space-y-6">
               {/* Basic Tab */}
               {activeTab === 'basic' && (
                 <>
                   {/* View Mode */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">
                       View Mode
                     </label>
                     <div className="grid grid-cols-3 gap-2">
@@ -168,7 +225,7 @@ function HomeContent() {
                           className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                             config.viewMode === mode
                               ? 'bg-blue-600 text-white'
-                              : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                              : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
                           }`}
                         >
                           {mode.charAt(0).toUpperCase() + mode.slice(1)}
@@ -179,50 +236,26 @@ function HomeContent() {
 
                   {/* Display Options */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                    <label className="block text-sm font-medium text-zinc-300 mb-3">
                       Display Options
                     </label>
                     <div className="space-y-3">
                       {[
-                        { key: 'showTitle', label: 'Show Title' },
-                        { key: 'showNavigation', label: 'Show Navigation' },
-                        { key: 'showDate', label: 'Show Date' },
-                        { key: 'showTabs', label: 'Show View Tabs' },
-                        { key: 'showCalendars', label: 'Show Calendar List' },
-                        { key: 'showPrint', label: 'Show Print Button' },
-                        { key: 'showTimezone', label: 'Show Timezone' },
+                        { key: 'showTitle', label: 'Show Calendar Title' },
+                        { key: 'showNavigation', label: 'Show Navigation Controls' },
+                        { key: 'showDate', label: 'Show Current Date' },
+                        { key: 'showTodayButton', label: 'Show Today Button' },
+                        { key: 'showPastEvents', label: 'Show Past Events (Last Year)' },
                       ].map(({ key, label }) => (
                         <label key={key} className="flex items-center gap-3 cursor-pointer">
                           <input
                             type="checkbox"
                             checked={config[key as keyof CalendarConfig] as boolean}
                             onChange={(e) => updateConfig({ [key]: e.target.checked })}
-                            className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-blue-600 focus:ring-blue-500"
                           />
-                          <span className="text-sm text-slate-700 dark:text-slate-300">{label}</span>
+                          <span className="text-sm text-zinc-300">{label}</span>
                         </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Theme */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      Theme
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(['light', 'dark', 'auto'] as const).map((theme) => (
-                        <button
-                          key={theme}
-                          onClick={() => updateConfig({ theme })}
-                          className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                            config.theme === theme
-                              ? 'bg-blue-600 text-white'
-                              : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                          }`}
-                        >
-                          {theme.charAt(0).toUpperCase() + theme.slice(1)}
-                        </button>
                       ))}
                     </div>
                   </div>
@@ -232,89 +265,236 @@ function HomeContent() {
               {/* Styling Tab */}
               {activeTab === 'styling' && (
                 <>
-                  {/* Colors */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Accent Color
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="color"
-                          value={config.accentColor}
-                          onChange={(e) => updateConfig({ accentColor: e.target.value })}
-                          className="w-12 h-10 rounded-lg cursor-pointer border border-slate-300"
-                        />
-                        <input
-                          type="text"
-                          value={config.accentColor}
-                          onChange={(e) => updateConfig({ accentColor: e.target.value })}
-                          className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
-                        />
+                  {/* Event Styling Section */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-zinc-200">Event Styling</h3>
+                      <span className="text-xs text-zinc-500">How events look on the calendar</span>
+                    </div>
+                    
+                    {/* Event Preview */}
+                    <div className="p-4 rounded-lg border border-zinc-700 bg-zinc-900">
+                      <div className="text-xs text-zinc-400 mb-2">Preview</div>
+                      <div 
+                        className="px-3 py-2 rounded text-sm"
+                        style={{
+                          backgroundColor: `rgba(${parseInt(config.eventColor.slice(1,3), 16)}, ${parseInt(config.eventColor.slice(3,5), 16)}, ${parseInt(config.eventColor.slice(5,7), 16)}, ${config.eventOpacity / 100})`,
+                          color: config.eventOpacity >= 60 ? '#ffffff' : config.eventColor,
+                          borderLeft: `3px solid rgba(${parseInt(config.eventBorderColor.slice(1,3), 16)}, ${parseInt(config.eventBorderColor.slice(3,5), 16)}, ${parseInt(config.eventBorderColor.slice(5,7), 16)}, ${config.eventBorderOpacity / 100})`
+                        }}
+                      >
+                        Sample Event
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Background
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="color"
-                          value={config.backgroundColor}
-                          onChange={(e) => updateConfig({ backgroundColor: e.target.value })}
-                          className="w-12 h-10 rounded-lg cursor-pointer border border-slate-300"
-                        />
-                        <input
-                          type="text"
-                          value={config.backgroundColor}
-                          onChange={(e) => updateConfig({ backgroundColor: e.target.value })}
-                          className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
-                        />
+                    
+                    <div className="grid grid-cols-1 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-300 mb-2">
+                          Event Fill Color
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={config.eventColor}
+                              onChange={(e) => updateConfig({ eventColor: e.target.value })}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                            <div 
+                              className="w-12 h-10 rounded-lg border-2 border-zinc-600 cursor-pointer hover:border-blue-500 transition-colors"
+                              style={{ backgroundColor: config.eventColor }}
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={config.eventColor}
+                            onChange={(e) => updateConfig({ eventColor: e.target.value })}
+                            className="flex-1 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm font-mono"
+                            placeholder="#4285f4"
+                          />
+                        </div>
+                        <div className="mt-2">
+                          <label className="block text-xs text-zinc-400 mb-1">
+                            Fill Opacity: {config.eventOpacity}%
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={config.eventOpacity}
+                            onChange={(e) => updateConfig({ eventOpacity: Number(e.target.value) })}
+                            className="w-full h-2 bg-zinc-700 rounded-lg cursor-pointer slider"
+                            style={{ accentColor: '#3b82f6' }}
+                          />
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-300 mb-2">
+                          Event Border Color
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={config.eventBorderColor}
+                              onChange={(e) => updateConfig({ eventBorderColor: e.target.value })}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                            <div 
+                              className="w-12 h-10 rounded-lg border-2 border-zinc-600 cursor-pointer hover:border-blue-500 transition-colors"
+                              style={{ backgroundColor: config.eventBorderColor }}
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={config.eventBorderColor}
+                            onChange={(e) => updateConfig({ eventBorderColor: e.target.value })}
+                            className="flex-1 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm font-mono"
+                            placeholder="#4285f4"
+                          />
+                        </div>
+                        <div className="mt-2">
+                          <label className="block text-xs text-zinc-400 mb-1">
+                            Border Opacity: {config.eventBorderOpacity}%
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="100"
+                            value={config.eventBorderOpacity}
+                            onChange={(e) => updateConfig({ eventBorderOpacity: Number(e.target.value) })}
+                            className="w-full h-2 bg-zinc-700 rounded-lg cursor-pointer slider"
+                            style={{ accentColor: '#3b82f6' }}
+                          />
+                        </div>
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Text Color
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="color"
-                          value={config.textColor}
-                          onChange={(e) => updateConfig({ textColor: e.target.value })}
-                          className="w-12 h-10 rounded-lg cursor-pointer border border-slate-300"
-                        />
-                        <input
-                          type="text"
-                          value={config.textColor}
-                          onChange={(e) => updateConfig({ textColor: e.target.value })}
-                          className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
-                        />
-                      </div>
+                  </div>
+
+                  {/* Calendar Colors Section */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-zinc-200">Calendar Colors</h3>
+                      <span className="text-xs text-zinc-500">Overall calendar appearance</span>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                        Border Color
-                      </label>
-                      <div className="flex gap-2">
-                        <input
-                          type="color"
-                          value={config.borderColor}
-                          onChange={(e) => updateConfig({ borderColor: e.target.value })}
-                          className="w-12 h-10 rounded-lg cursor-pointer border border-slate-300"
-                        />
-                        <input
-                          type="text"
-                          value={config.borderColor}
-                          onChange={(e) => updateConfig({ borderColor: e.target.value })}
-                          className="flex-1 px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
-                        />
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-300 mb-2">
+                          Accent Color
+                          <span className="block text-xs text-zinc-500 font-normal mt-0.5">Headers, buttons, current day</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={config.accentColor}
+                              onChange={(e) => updateConfig({ accentColor: e.target.value })}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                            <div 
+                              className="w-12 h-10 rounded-lg border-2 border-zinc-600 cursor-pointer hover:border-blue-500 transition-colors"
+                              style={{ backgroundColor: config.accentColor }}
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={config.accentColor}
+                            onChange={(e) => updateConfig({ accentColor: e.target.value })}
+                            className="flex-1 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm font-mono"
+                            placeholder="#4285f4"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-300 mb-2">
+                          Background
+                          <span className="block text-xs text-zinc-500 font-normal mt-0.5">Calendar background color</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={config.backgroundColor}
+                              onChange={(e) => updateConfig({ backgroundColor: e.target.value })}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                            <div 
+                              className="w-12 h-10 rounded-lg border-2 border-zinc-600 cursor-pointer hover:border-blue-500 transition-colors"
+                              style={{ backgroundColor: config.backgroundColor }}
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={config.backgroundColor}
+                            onChange={(e) => updateConfig({ backgroundColor: e.target.value })}
+                            className="flex-1 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm font-mono"
+                            placeholder="#ffffff"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-300 mb-2">
+                          Text Color
+                          <span className="block text-xs text-zinc-500 font-normal mt-0.5">Calendar text and labels</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={config.textColor}
+                              onChange={(e) => updateConfig({ textColor: e.target.value })}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                            <div 
+                              className="w-12 h-10 rounded-lg border-2 border-zinc-600 cursor-pointer hover:border-blue-500 transition-colors"
+                              style={{ backgroundColor: config.textColor }}
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={config.textColor}
+                            onChange={(e) => updateConfig({ textColor: e.target.value })}
+                            className="flex-1 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm font-mono"
+                            placeholder="#333333"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-zinc-300 mb-2">
+                          Border Color
+                          <span className="block text-xs text-zinc-500 font-normal mt-0.5">Calendar grid borders</span>
+                        </label>
+                        <div className="flex gap-2">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={config.borderColor}
+                              onChange={(e) => updateConfig({ borderColor: e.target.value })}
+                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                            />
+                            <div 
+                              className="w-12 h-10 rounded-lg border-2 border-zinc-600 cursor-pointer hover:border-blue-500 transition-colors"
+                              style={{ backgroundColor: config.borderColor }}
+                            />
+                          </div>
+                          <input
+                            type="text"
+                            value={config.borderColor}
+                            onChange={(e) => updateConfig({ borderColor: e.target.value })}
+                            className="flex-1 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm font-mono"
+                            className="flex-1 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm"
+                            placeholder="#e5e7eb"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
 
                   {/* Border Radius */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">
                       Border Radius: {config.borderRadius}px
                     </label>
                     <input
@@ -323,13 +503,16 @@ function HomeContent() {
                       max="32"
                       value={config.borderRadius}
                       onChange={(e) => updateConfig({ borderRadius: Number(e.target.value) })}
-                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      className="w-full h-2 bg-zinc-700 rounded-lg cursor-pointer slider"
+                      style={{
+                        accentColor: '#3b82f6',
+                      }}
                     />
                   </div>
 
                   {/* Border Width */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">
                       Border Width: {config.borderWidth}px
                     </label>
                     <input
@@ -338,13 +521,16 @@ function HomeContent() {
                       max="4"
                       value={config.borderWidth}
                       onChange={(e) => updateConfig({ borderWidth: Number(e.target.value) })}
-                      className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      className="w-full h-2 bg-zinc-700 rounded-lg cursor-pointer slider"
+                      style={{
+                        accentColor: '#3b82f6',
+                      }}
                     />
                   </div>
 
                   {/* Shadow */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">
                       Shadow Size
                     </label>
                     <div className="grid grid-cols-5 gap-2">
@@ -355,7 +541,7 @@ function HomeContent() {
                           className={`px-3 py-2 rounded-lg text-xs font-medium transition-all ${
                             config.shadowSize === size
                               ? 'bg-blue-600 text-white'
-                              : 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                              : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
                           }`}
                         >
                           {size.toUpperCase()}
@@ -366,13 +552,13 @@ function HomeContent() {
 
                   {/* Font Family */}
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    <label className="block text-sm font-medium text-zinc-300 mb-2">
                       Font Family
                     </label>
                     <select
                       value={config.fontFamily}
                       onChange={(e) => updateConfig({ fontFamily: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                      className="w-full px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white"
                     >
                       <option value="Inter, system-ui, sans-serif">Inter</option>
                       <option value="system-ui, sans-serif">System Default</option>
@@ -392,7 +578,7 @@ function HomeContent() {
                   {/* Size Settings */}
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      <label className="block text-sm font-medium text-zinc-300 mb-2">
                         Width
                       </label>
                       <input
@@ -400,11 +586,11 @@ function HomeContent() {
                         value={config.width}
                         onChange={(e) => updateConfig({ width: e.target.value })}
                         placeholder="100%"
-                        className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                        className="w-full px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      <label className="block text-sm font-medium text-zinc-300 mb-2">
                         Height
                       </label>
                       <input
@@ -412,11 +598,11 @@ function HomeContent() {
                         value={config.height}
                         onChange={(e) => updateConfig({ height: e.target.value })}
                         placeholder="600px"
-                        className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                        className="w-full px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      <label className="block text-sm font-medium text-zinc-300 mb-2">
                         Min Height
                       </label>
                       <input
@@ -424,11 +610,11 @@ function HomeContent() {
                         value={config.minHeight}
                         onChange={(e) => updateConfig({ minHeight: e.target.value })}
                         placeholder="400px"
-                        className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                        className="w-full px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      <label className="block text-sm font-medium text-zinc-300 mb-2">
                         Max Height
                       </label>
                       <input
@@ -436,48 +622,30 @@ function HomeContent() {
                         value={config.maxHeight}
                         onChange={(e) => updateConfig({ maxHeight: e.target.value })}
                         placeholder="800px"
-                        className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm"
+                        className="w-full px-4 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm"
                       />
                     </div>
                   </div>
 
-                  {/* Aspect Ratio */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                      Aspect Ratio (when responsive)
-                    </label>
-                    <select
-                      value={config.aspectRatio}
-                      onChange={(e) => updateConfig({ aspectRatio: e.target.value })}
-                      className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900"
-                    >
-                      <option value="16/9">16:9 (Widescreen)</option>
-                      <option value="4/3">4:3 (Standard)</option>
-                      <option value="1/1">1:1 (Square)</option>
-                      <option value="3/4">3:4 (Portrait)</option>
-                      <option value="auto">Auto</option>
-                    </select>
-                  </div>
-
                   {/* Squarespace Mode */}
-                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-4">
+                  <div className="bg-blue-500/10 rounded-xl p-4 border border-blue-500/20">
                     <label className="flex items-center gap-3 cursor-pointer mb-3">
                       <input
                         type="checkbox"
                         checked={config.squarespaceMode}
                         onChange={(e) => updateConfig({ squarespaceMode: e.target.checked })}
-                        className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-blue-600 focus:ring-blue-500"
                       />
-                      <span className="font-medium text-slate-700 dark:text-slate-300">
+                      <span className="font-medium text-zinc-200">
                         Squarespace Mode
                       </span>
                     </label>
-                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                    <p className="text-sm text-zinc-400">
                       Enables auto-resizing and special optimizations for Squarespace containers
                     </p>
                     {config.squarespaceMode && (
                       <div className="mt-3">
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                        <label className="block text-sm font-medium text-zinc-300 mb-2">
                           Container Padding: {config.containerPadding}px
                         </label>
                         <input
@@ -486,7 +654,10 @@ function HomeContent() {
                           max="40"
                           value={config.containerPadding}
                           onChange={(e) => updateConfig({ containerPadding: Number(e.target.value) })}
-                          className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                          className="w-full h-2 bg-zinc-700 rounded-lg cursor-pointer slider"
+                          style={{
+                            accentColor: '#3b82f6',
+                          }}
                         />
                       </div>
                     )}
@@ -498,9 +669,9 @@ function HomeContent() {
                       type="checkbox"
                       checked={config.responsive}
                       onChange={(e) => updateConfig({ responsive: e.target.checked })}
-                      className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                      className="w-5 h-5 rounded border-zinc-600 bg-zinc-800 text-blue-600 focus:ring-blue-500"
                     />
-                    <span className="text-sm text-slate-700 dark:text-slate-300">
+                    <span className="text-sm text-zinc-300">
                       Enable Responsive Resizing
                     </span>
                   </label>
@@ -512,12 +683,13 @@ function HomeContent() {
           {/* Preview Panel */}
           <div className="space-y-6">
             {/* Live Preview */}
-            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-              <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                <h3 className="font-semibold text-slate-900 dark:text-white">Live Preview</h3>
+            <div className="bg-zinc-900 rounded-2xl shadow-lg border border-zinc-800 overflow-hidden">
+              <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+                <h3 className="font-semibold text-white">Live Preview</h3>
                 <button
-                  onClick={refreshPreview}
-                  className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
+                  onClick={() => fetchCalendarData(config.calendarUrl)}
+                  disabled={!isValidCalendar || loading}
+                  className="text-sm text-blue-400 hover:text-blue-300 flex items-center gap-1 disabled:opacity-50"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -525,42 +697,17 @@ function HomeContent() {
                   Refresh
                 </button>
               </div>
-              <div className="p-6 bg-slate-100 dark:bg-slate-900">
-                {isValidCalendar ? (
-                  <div
-                    className="transition-all duration-300"
-                    style={{
-                      borderRadius: `${config.borderRadius}px`,
-                      border: `${config.borderWidth}px solid ${config.borderColor}`,
-                      boxShadow: config.shadowSize === 'none' ? 'none' :
-                        config.shadowSize === 'sm' ? '0 1px 2px rgba(0,0,0,0.05)' :
-                        config.shadowSize === 'md' ? '0 4px 6px -1px rgba(0,0,0,0.1)' :
-                        config.shadowSize === 'lg' ? '0 10px 15px -3px rgba(0,0,0,0.1)' :
-                        '0 25px 50px -12px rgba(0,0,0,0.25)',
-                      overflow: 'hidden',
-                      backgroundColor: config.backgroundColor,
-                    }}
-                  >
-                    <div style={{
-                      filter: config.theme === 'dark' ? 'invert(1) hue-rotate(180deg)' : 'none',
-                      transition: 'filter 0.3s ease',
-                    }}>
-                      <iframe
-                        key={`${previewKey}-${generateEmbedUrl(config)}`}
-                        src={generateEmbedUrl(config)}
-                        style={{
-                          width: '100%',
-                          height: '400px',
-                          border: 'none',
-                          display: 'block',
-                        }}
-                        loading="lazy"
-                        title="Calendar Preview"
-                      />
-                    </div>
-                  </div>
+              <div className="p-6 bg-zinc-950">
+                {isValidCalendar || events.length > 0 ? (
+                  <CustomCalendar
+                    events={events}
+                    config={config}
+                    calendarName={calendarName}
+                    loading={loading}
+                    error={error}
+                  />
                 ) : (
-                  <div className="flex items-center justify-center h-64 text-slate-400">
+                  <div className="flex items-center justify-center h-64 text-zinc-500">
                     <div className="text-center">
                       <svg className="w-16 h-16 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -574,22 +721,22 @@ function HomeContent() {
 
             {/* Embed Code */}
             {isValidCalendar && (
-              <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-                <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-                  <h3 className="font-semibold text-slate-900 dark:text-white">Embed Code</h3>
+              <div className="bg-zinc-900 rounded-2xl shadow-lg border border-zinc-800 overflow-hidden">
+                <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+                  <h3 className="font-semibold text-white">Embed Code</h3>
                   <button
                     onClick={copyToClipboard}
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                       copied
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        ? 'bg-green-500/20 text-green-400'
+                        : 'bg-blue-500/20 text-blue-400 hover:bg-blue-500/30'
                     }`}
                   >
                     {copied ? '✓ Copied!' : 'Copy Code'}
                   </button>
                 </div>
                 <div className="p-4">
-                  <pre className="bg-slate-900 text-slate-100 p-4 rounded-xl text-sm overflow-x-auto">
+                  <pre className="bg-zinc-950 text-zinc-300 p-4 rounded-xl text-sm overflow-x-auto border border-zinc-800">
                     <code>{embedCode}</code>
                   </pre>
                 </div>
@@ -600,42 +747,41 @@ function HomeContent() {
 
         {/* Instructions */}
         <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
-              <span className="text-2xl">1</span>
+          <div className="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-4">
+              <span className="text-2xl text-blue-400">1</span>
             </div>
-            <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Get Your Calendar URL</h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Go to Google Calendar → Settings → Calendar settings → Integrate calendar → Copy the embed code or calendar ID
+            <h3 className="font-semibold text-white mb-2">Make Calendar Public</h3>
+            <p className="text-sm text-zinc-400">
+              Go to Google Calendar → Settings → Select your calendar → Make available to public
             </p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
-              <span className="text-2xl">2</span>
+          <div className="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-4">
+              <span className="text-2xl text-blue-400">2</span>
             </div>
-            <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Customize Your Embed</h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Use our customization options to style your calendar exactly how you want it. Change colors, fonts, borders and more.
+            <h3 className="font-semibold text-white mb-2">Customize Your Calendar</h3>
+            <p className="text-sm text-zinc-400">
+              Use our customization options to style your calendar exactly how you want it. Change colors, fonts, and more.
             </p>
           </div>
-          <div className="bg-white dark:bg-slate-800 rounded-xl p-6 border border-slate-200 dark:border-slate-700">
-            <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4">
-              <span className="text-2xl">3</span>
+          <div className="bg-zinc-900 rounded-xl p-6 border border-zinc-800">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center mb-4">
+              <span className="text-2xl text-blue-400">3</span>
             </div>
-            <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Copy & Paste</h3>
-            <p className="text-sm text-slate-600 dark:text-slate-400">
-              Copy the generated embed code and paste it into your Squarespace, WordPress, or any website using HTML blocks.
+            <h3 className="font-semibold text-white mb-2">Copy & Paste</h3>
+            <p className="text-sm text-zinc-400">
+              Copy the generated embed code and paste it into your Squarespace, WordPress, or any website.
             </p>
           </div>
         </div>
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-slate-200 dark:border-slate-700 mt-16">
+      <footer className="border-t border-zinc-800 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="text-center text-sm text-slate-500 dark:text-slate-400">
-            <p>Simply Calendar Embeds - No account required. Your calendar URL is never stored.</p>
-            <p className="mt-2">Works with any public Google Calendar</p>
+          <div className="text-center text-sm text-zinc-500">
+            <p>Simply Calendar Embeds - Works with any public Google Calendar</p>
           </div>
         </div>
       </footer>
@@ -646,14 +792,14 @@ function HomeContent() {
 export default function Home() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center mx-auto mb-4 animate-pulse">
             <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
           </div>
-          <p className="text-slate-600 dark:text-slate-400">Loading...</p>
+          <p className="text-zinc-400">Loading...</p>
         </div>
       </div>
     }>
