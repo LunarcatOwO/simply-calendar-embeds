@@ -484,7 +484,6 @@ function HomeContent() {
                             value={config.borderColor}
                             onChange={(e) => updateConfig({ borderColor: e.target.value })}
                             className="flex-1 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm font-mono"
-                            className="flex-1 px-3 py-2 rounded-lg border border-zinc-700 bg-zinc-800 text-white text-sm"
                             placeholder="#e5e7eb"
                           />
                         </div>

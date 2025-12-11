@@ -35,6 +35,9 @@ COPY . .
 ARG SENTRY_AUTH_TOKEN
 ENV SENTRY_AUTH_TOKEN=${SENTRY_AUTH_TOKEN}
 
+# Enable Docker build mode for standalone output
+ENV DOCKER_BUILD=1
+
 # Disable telemetry during build
 ENV NEXT_TELEMETRY_DISABLED=1
 
