@@ -17,9 +17,11 @@ export interface CalendarConfig {
   // Styling
   theme: 'light' | 'dark' | 'auto';
   accentColor: string;
-  eventColor: string;  eventOpacity: number;          // Event background opacity (0-100)
+  eventColor: string;
+  eventOpacity: number;          // Event background opacity (0-100)
   eventBorderColor: string;      // Event border color
-  eventBorderOpacity: number;    // Event border opacity (0-100)  backgroundColor: string;
+  eventBorderOpacity: number;    // Event border opacity (0-100)
+  backgroundColor: string;
   textColor: string;
   borderRadius: number;
   borderWidth: number;
