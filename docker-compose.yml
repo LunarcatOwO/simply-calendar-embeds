@@ -1,6 +1,6 @@
 services:
   web:
-    image: ghcr.io/LunarcatOwO/simply-calendar-embeds:latest
+    image: ghcr.io/lunarcatowo/simply-calendar-embeds:latest
     environment:
       - NODE_ENV=production
     restart: unless-stopped
