@@ -16,27 +16,8 @@ env:
   TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
 
 jobs:
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run lint
-        run: npm run lint
-
   build:
-    name: Build
+    name: Build and Deploy
     runs-on: ubuntu-latest
     environment: Prod
     permissions:
@@ -54,6 +35,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Run lint
+        run: npm run lint
 
       - name: Build
         run: npm run build
@@ -79,26 +63,16 @@ jobs:
           prerelease: ${{ github.ref_name != github.event.repository.default_branch }}
           generate_release_notes: true
 
-  docker:
-    name: Build Docker Image
-    runs-on: ubuntu-latest
-    environment: Prod
-    needs: [lint, build]
-    if: github.event_name != 'pull_request'
-    permissions:
-      contents: write
-      packages: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
       - name: Set up QEMU
+        if: github.event_name != 'pull_request'
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
+        if: github.event_name != 'pull_request'
         uses: docker/setup-buildx-action@v3
 
       - name: Login to GitHub Container Registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -106,6 +80,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
+        if: github.event_name != 'pull_request'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -117,6 +92,7 @@ jobs:
             type=raw,value=${{ github.ref_name }},enable=true
 
       - name: Build and push Docker image
+        if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -126,6 +102,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
       - name: Create and push git tag with SHA
+        if: github.event_name != 'pull_request'
         run: |
           TAG_NAME=sha-${GITHUB_SHA::7}
           git config user.name "github-actions[bot]"
