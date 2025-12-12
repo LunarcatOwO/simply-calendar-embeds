@@ -10,21 +10,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # Development service (optional)
-  web-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    ports:
-      - "3000:3000"
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+      - "com.centurylinklabs.watchtower.scope=simply-calendar-embeds"
+  watchtower:
+    image: beatkind/watchtower
     volumes:
-      - ./apps/web:/app/apps/web
-      - ./packages:/app/packages
-      - /app/node_modules
-      - /app/apps/web/node_modules
-      - /app/apps/web/.next
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 60 --cleanup --rolling-restart --scope simply-calendar-embeds --label-enable
+    restart: always
     environment:
-      - NODE_ENV=development
-    profiles:
-      - dev
+      - WATCHTOWER_POLL_INTERVAL=60
