@@ -7,7 +7,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Copy the standalone output from CI
+# Copy node_modules and built Next.js app
+COPY node_modules ./node_modules
 COPY apps/web/.next/standalone ./
 COPY apps/web/.next/static ./apps/web/.next/static
 COPY apps/web/public ./apps/web/public
